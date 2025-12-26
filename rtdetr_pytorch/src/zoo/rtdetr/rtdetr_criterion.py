@@ -29,7 +29,8 @@ class SetCriterion(nn.Module):
     __share__ = ['num_classes', ]
     __inject__ = ['matcher', ]
 
-    def __init__(self, matcher, weight_dict, losses, alpha=0.2, gamma=2.0, eos_coef=1e-4, num_classes=80):
+    def __init__(self, matcher, weight_dict, losses, alpha=0.2, gamma=2.0, eos_coef=1e-4, num_classes=80,
+                 query_difficulty_weighting=False, query_difficulty_gamma=1.5):
         """ Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -37,6 +38,8 @@ class SetCriterion(nn.Module):
             weight_dict: dict containing as key the names of the losses and as values their relative weight.
             eos_coef: relative classification weight applied to the no-object category
             losses: list of all the losses to be applied. See get_loss for list of available losses.
+            query_difficulty_weighting: if True, apply IoU-based difficulty weighting to losses
+            query_difficulty_gamma: exponent for difficulty weighting (range: 1.0 to 2.0)
         """
         super().__init__()
         self.num_classes = num_classes
@@ -50,6 +53,10 @@ class SetCriterion(nn.Module):
 
         self.alpha = alpha
         self.gamma = gamma
+        
+        # Query Difficulty-Aware Loss Reweighting
+        self.query_difficulty_weighting = query_difficulty_weighting
+        self.query_difficulty_gamma = query_difficulty_gamma
 
 
     def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
@@ -104,9 +111,39 @@ class SetCriterion(nn.Module):
         # loss = alpha_t * ce_loss * ((1 - p_t) ** self.gamma)
         # loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         loss = torchvision.ops.sigmoid_focal_loss(src_logits, target, self.alpha, self.gamma, reduction='none')
-        loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
+        
+        # Query Difficulty-Aware Loss Reweighting
+        if self.query_difficulty_weighting and 'pred_boxes' in outputs:
+            # Get matched boxes to compute IoU
+            src_boxes = outputs['pred_boxes'][idx]
+            target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+            
+            # Compute IoU for each matched query
+            ious, _ = box_iou(box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes))
+            ious = torch.diag(ious).clamp(min=0.0, max=1.0)  # Numerical stability
+            
+            # Calculate difficulty weights: w_q = (1 - IoU_q)^gamma
+            weights = (1.0 - ious).pow(self.query_difficulty_gamma).detach()  # MUST detach!
+            
+            # Handle empty matches
+            if weights.numel() == 0:
+                return {'loss_focal': loss.sum() * 0.0}
+            
+            # Apply weights to matched queries only
+            # loss shape: [batch_size, num_queries, num_classes]
+            # We need to apply weights only to matched positions
+            loss_per_query = loss.mean(-1)  # Average over classes: [batch_size, num_queries]
+            matched_loss = loss_per_query[idx]  # Get losses for matched queries
+            
+            # Apply weights and normalize
+            # CRITICAL: Normalize by num_boxes (not num_queries) for consistency with RT-DETR baseline
+            weighted_loss = (weights * matched_loss).sum() / weights.sum()
+            loss_focal = weighted_loss * num_boxes
+        else:
+            # Original RT-DETR loss (baseline)
+            loss_focal = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
 
-        return {'loss_focal': loss}
+        return {'loss_focal': loss_focal}
 
     def loss_labels_vfl(self, outputs, targets, indices, num_boxes, log=True):
         assert 'pred_boxes' in outputs
@@ -132,8 +169,32 @@ class SetCriterion(nn.Module):
         weight = self.alpha * pred_score.pow(self.gamma) * (1 - target) + target_score
         
         loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
-        loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
-        return {'loss_vfl': loss}
+        
+        # Query Difficulty-Aware Loss Reweighting
+        if self.query_difficulty_weighting:
+            # Reuse IoU already computed above, clamp for numerical stability
+            ious_clamped = ious.clamp(min=0.0, max=1.0)
+            
+            # Calculate difficulty weights: w_q = (1 - IoU_q)^gamma
+            difficulty_weights = (1.0 - ious_clamped).pow(self.query_difficulty_gamma).detach()  # MUST detach!
+            
+            # Handle empty matches
+            if difficulty_weights.numel() == 0:
+                return {'loss_vfl': loss.sum() * 0.0}
+            
+            # Apply difficulty weights to matched queries
+            loss_per_query = loss.mean(-1)  # Average over classes: [batch_size, num_queries]
+            matched_loss = loss_per_query[idx]  # Get losses for matched queries
+            
+            # Apply weights and normalize
+            # CRITICAL: Normalize by num_boxes (not num_queries) for consistency with RT-DETR baseline
+            weighted_loss = (difficulty_weights * matched_loss).sum() / difficulty_weights.sum()
+            loss_vfl = weighted_loss * num_boxes
+        else:
+            # Original RT-DETR loss (baseline)
+            loss_vfl = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
+            
+        return {'loss_vfl': loss_vfl}
 
     @torch.no_grad()
     def loss_cardinality(self, outputs, targets, indices, num_boxes):
@@ -161,13 +222,36 @@ class SetCriterion(nn.Module):
 
         losses = {}
 
+        # Compute losses
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
-        losses['loss_bbox'] = loss_bbox.sum() / num_boxes
-
         loss_giou = 1 - torch.diag(generalized_box_iou(
                 box_cxcywh_to_xyxy(src_boxes),
                 box_cxcywh_to_xyxy(target_boxes)))
-        losses['loss_giou'] = loss_giou.sum() / num_boxes
+        
+        # Query Difficulty-Aware Loss Reweighting
+        if self.query_difficulty_weighting:
+            # Compute IoU once and reuse (optimization to avoid redundant computation)
+            ious, _ = box_iou(box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes))
+            ious = torch.diag(ious).clamp(min=0.0, max=1.0)  # Numerical stability
+            
+            # Calculate difficulty weights: w_q = (1 - IoU_q)^gamma
+            # Hard queries (low IoU) get higher weights
+            weights = (1.0 - ious).pow(self.query_difficulty_gamma).detach()  # MUST detach!
+            
+            # Handle empty matches (rare edge case)
+            if weights.numel() == 0:
+                losses['loss_bbox'] = loss_bbox.sum() * 0.0
+                losses['loss_giou'] = loss_giou.sum() * 0.0
+                return losses
+            
+            # Apply weights and normalize by sum of weights
+            losses['loss_bbox'] = (weights.unsqueeze(1) * loss_bbox).sum() / weights.sum()
+            losses['loss_giou'] = (weights * loss_giou).sum() / weights.sum()
+        else:
+            # Original RT-DETR loss (baseline)
+            losses['loss_bbox'] = loss_bbox.sum() / num_boxes
+            losses['loss_giou'] = loss_giou.sum() / num_boxes
+            
         return losses
 
     def loss_masks(self, outputs, targets, indices, num_boxes):

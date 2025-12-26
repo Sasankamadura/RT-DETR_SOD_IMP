@@ -69,6 +69,10 @@ SetCriterion:
   losses: ['vfl', 'boxes']
   alpha: 0.75
   gamma: 2.0
+  
+  # Query Difficulty-Aware Loss Reweighting (Training-only, FPS-neutral)
+  query_difficulty_weighting: false  # Set to true to enable IoU-based difficulty weighting
+  query_difficulty_gamma: 1.5        # Difficulty exponent [1.0, 2.0], higher = more emphasis on hard queries
 
   matcher:
     type: HungarianMatcher
