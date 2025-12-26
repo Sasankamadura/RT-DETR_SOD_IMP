@@ -6,16 +6,19 @@ postprocessor: RTDETRPostProcessor
 
 
 RTDETR: 
-  backbone: DLANet
+  backbone: PResNet
   encoder: HybridEncoder
   decoder: RTDETRTransformer
   multi_scale: [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800]
 
-DLANet:
-  dla: dla34
-  pretrained: True
+PResNet:
+  depth: 18
+  variant: d
+  freeze_at: 0
   return_idx: [1, 2, 3]
-
+  num_stages: 4
+  freeze_norm: True
+  pretrained: True 
 
 HybridEncoder:
   in_channels: [128, 256, 512]
@@ -32,7 +35,7 @@ HybridEncoder:
   pe_temperature: 10000
   
   # cross
-  expansion: 1.0
+  expansion: 0.5
   depth_mult: 1
   act: 'silu'
 
@@ -48,7 +51,7 @@ RTDETRTransformer:
 
   num_queries: 300
 
-  num_decoder_layers: 6
+  num_decoder_layers: 3
   num_denoising: 100
   
   eval_idx: -1
@@ -62,17 +65,13 @@ RTDETRPostProcessor:
 
 
 SetCriterion:
-  weight_dict: {loss_vfl: 1, loss_bbox: 5, loss_giou: 2,}
-  losses: ['vfl', 'boxes', ]
+  weight_dict: {loss_vfl: 1, loss_bbox: 5, loss_giou: 2}
+  losses: ['vfl', 'boxes']
   alpha: 0.75
   gamma: 2.0
 
   matcher:
     type: HungarianMatcher
     weight_dict: {cost_class: 2, cost_bbox: 5, cost_giou: 2}
-    # use_focal_loss: True 
     alpha: 0.25
     gamma: 2.0
-
-
-

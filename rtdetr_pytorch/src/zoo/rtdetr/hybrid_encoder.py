@@ -32,6 +32,48 @@ class ConvNormLayer(nn.Module):
         return self.act(self.norm(self.conv(x)))
 
 
+class P2Process(nn.Module):
+    """Simple processing for P2 features before fusion"""
+    def __init__(self, in_ch, out_ch, act='silu'):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_ch)
+        self.conv2 = nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_ch)
+        self.act = nn.Identity() if act is None else get_activation(act)
+
+    def forward(self, x):
+        x = self.act(self.bn1(self.conv1(x)))
+        x = self.act(self.bn2(self.conv2(x)))
+        return x
+
+
+class P2P3Fusion(nn.Module):
+    """Fuse P2 and P3 features by downsampling P2 and concatenating"""
+    def __init__(self, ch, act='silu'):
+        super().__init__()
+        # Downsample P2 from stride 4 to stride 8
+        self.downsample = ConvNormLayer(ch, ch, 3, 2, act=act)
+        # Fusion layer: concat channels then reduce
+        self.fuse = nn.Sequential(
+            nn.Conv2d(ch * 2, ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(ch),
+            get_activation(act)
+        )
+
+    def forward(self, p2, p3):
+        """
+        Args:
+            p2: P2 features (stride 4)
+            p3: P3 features (stride 8)
+        Returns:
+            Fused features (stride 8)
+        """
+        p2_down = self.downsample(p2)  # stride 4 -> stride 8
+        fused = torch.cat([p2_down, p3], dim=1)  # concat along channel
+        return self.fuse(fused)
+
+
 class RepVggBlock(nn.Module):
     def __init__(self, ch_in, ch_out, act='relu'):
         super().__init__()
@@ -205,8 +247,18 @@ class HybridEncoder(nn.Module):
         self.pe_temperature = pe_temperature
         self.eval_spatial_size = eval_spatial_size
 
-        self.out_channels = [hidden_dim for _ in range(len(in_channels))]
-        self.out_strides = feat_strides
+        # P2 processing and fusion (only if we have 4 input levels)
+        # NOTE: P2 is only used to enrich P3; no additional detection scale is added
+        self.use_p2_fusion = len(in_channels) == 4
+        
+        # Always define outputs based on actual output (3 levels)
+        # This avoids downstream assumptions about len(out_channels) == len(in_channels)
+        if self.use_p2_fusion:
+            self.out_channels = [hidden_dim, hidden_dim, hidden_dim]
+            self.out_strides = [8, 16, 32]  # P3, P4, P5 strides
+        else:
+            self.out_channels = [hidden_dim for _ in range(len(in_channels))]
+            self.out_strides = feat_strides
         
         # channel projection
         self.input_proj = nn.ModuleList()
@@ -250,12 +302,21 @@ class HybridEncoder(nn.Module):
                 CSPRepLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion)
             )
 
+        # P2 processing modules (if P2 fusion enabled)
+        if self.use_p2_fusion:
+            self.p2_process = P2Process(in_channels[0], hidden_dim, act=act)
+            self.p2p3_fusion = P2P3Fusion(hidden_dim, act=act)
+
         self._reset_parameters()
 
     def _reset_parameters(self):
         if self.eval_spatial_size:
+            # When P2 fusion is enabled, encoder sees 3-level features [P3, P4, P5]
+            # so we need to use effective strides, not raw feat_strides
+            effective_strides = self.out_strides if self.use_p2_fusion else self.feat_strides
+            
             for idx in self.use_encoder_idx:
-                stride = self.feat_strides[idx]
+                stride = effective_strides[idx]
                 pos_embed = self.build_2d_sincos_position_embedding(
                     self.eval_spatial_size[1] // stride, self.eval_spatial_size[0] // stride,
                     self.hidden_dim, self.pe_temperature)
@@ -282,37 +343,79 @@ class HybridEncoder(nn.Module):
 
     def forward(self, feats):
         assert len(feats) == len(self.in_channels)
-        proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
         
-        # encoder
-        if self.num_encoder_layers > 0:
-            for i, enc_ind in enumerate(self.use_encoder_idx):
-                h, w = proj_feats[enc_ind].shape[2:]
-                # flatten [B, C, H, W] to [B, HxW, C]
-                src_flatten = proj_feats[enc_ind].flatten(2).permute(0, 2, 1)
-                if self.training or self.eval_spatial_size is None:
-                    pos_embed = self.build_2d_sincos_position_embedding(
-                        w, h, self.hidden_dim, self.pe_temperature).to(src_flatten.device)
-                else:
-                    pos_embed = getattr(self, f'pos_embed{enc_ind}', None).to(src_flatten.device)
+        if self.use_p2_fusion:
+            # P2 Fusion Path:
+            # NOTE: P2 is only used to enrich P3; no additional detection scale is added
+            # Process P2 features and fuse them into P3 before encoder processing
+            # This improves small object detection without changing decoder architecture
+            
+            # Process P2 separately
+            p2 = self.p2_process(feats[0])  # feats[0] = C2 (stride 4)
+            
+            # Project remaining features [C3, C4, C5]
+            proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats[1:])]
+            # proj_feats indexing:
+            #   0: P3 (stride 8)
+            #   1: P4 (stride 16)
+            #   2: P5 (stride 32)
+            
+            # Fuse P2 with P3 BEFORE encoder processing
+            # This allows the encoder to see the enriched P3
+            fused_p3 = self.p2p3_fusion(p2, proj_feats[0])
+            proj_feats[0] = fused_p3  # Replace P3 with enriched version
+            
+            # Now run encoder on the enriched features
+            # use_encoder_idx typically contains [2] for P5
+            if self.num_encoder_layers > 0:
+                for i, enc_ind in enumerate(self.use_encoder_idx):
+                    h, w = proj_feats[enc_ind].shape[2:]
+                    src_flatten = proj_feats[enc_ind].flatten(2).permute(0, 2, 1)
+                    if self.training or self.eval_spatial_size is None:
+                        pos_embed = self.build_2d_sincos_position_embedding(
+                            w, h, self.hidden_dim, self.pe_temperature).to(src_flatten.device)
+                    else:
+                        pos_embed = getattr(self, f'pos_embed{enc_ind}', None).to(src_flatten.device)
+                    memory = self.encoder[i](src_flatten, src_mask=None, pos_embed=pos_embed)
+                    proj_feats[enc_ind] = memory.permute(0, 2, 1).reshape(-1, self.hidden_dim, h, w).contiguous()
+            
+            # Use proj_feats (3 levels) for FPN/PAN
+            num_levels = 3
+        else:
+            # Original 3-level path
+            proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
+            
+            # encoder
+            if self.num_encoder_layers > 0:
+                for i, enc_ind in enumerate(self.use_encoder_idx):
+                    h, w = proj_feats[enc_ind].shape[2:]
+                    # flatten [B, C, H, W] to [B, HxW, C]
+                    src_flatten = proj_feats[enc_ind].flatten(2).permute(0, 2, 1)
+                    if self.training or self.eval_spatial_size is None:
+                        pos_embed = self.build_2d_sincos_position_embedding(
+                            w, h, self.hidden_dim, self.pe_temperature).to(src_flatten.device)
+                    else:
+                        pos_embed = getattr(self, f'pos_embed{enc_ind}', None).to(src_flatten.device)
 
-                memory = self.encoder[i](src_flatten, pos_embed=pos_embed)
-                proj_feats[enc_ind] = memory.permute(0, 2, 1).reshape(-1, self.hidden_dim, h, w).contiguous()
-                # print([x.is_contiguous() for x in proj_feats ])
+                    memory = self.encoder[i](src_flatten, src_mask=None, pos_embed=pos_embed)
+                    proj_feats[enc_ind] = memory.permute(0, 2, 1).reshape(-1, self.hidden_dim, h, w).contiguous()
+            
+            num_levels = len(self.in_channels)
 
-        # broadcasting and fusion
+        # broadcasting and fusion (FPN top-down)
         inner_outs = [proj_feats[-1]]
-        for idx in range(len(self.in_channels) - 1, 0, -1):
+        for idx in range(num_levels - 1, 0, -1):
             feat_high = inner_outs[0]
             feat_low = proj_feats[idx - 1]
-            feat_high = self.lateral_convs[len(self.in_channels) - 1 - idx](feat_high)
+            feat_high = self.lateral_convs[num_levels - 1 - idx](feat_high)
             inner_outs[0] = feat_high
             upsample_feat = F.interpolate(feat_high, scale_factor=2., mode='nearest')
-            inner_out = self.fpn_blocks[len(self.in_channels)-1-idx](torch.concat([upsample_feat, feat_low], dim=1))
+            inner_out = self.fpn_blocks[num_levels-1-idx](torch.concat([upsample_feat, feat_low], dim=1))
             inner_outs.insert(0, inner_out)
 
+        # PAN bottom-up
         outs = [inner_outs[0]]
-        for idx in range(len(self.in_channels) - 1):
+        for idx in range(num_levels - 1):
             feat_low = outs[-1]
             feat_high = inner_outs[idx + 1]
             downsample_feat = self.downsample_convs[idx](feat_low)
