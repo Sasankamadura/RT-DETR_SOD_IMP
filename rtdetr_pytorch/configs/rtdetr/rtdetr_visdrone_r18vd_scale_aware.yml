@@ -1,0 +1,31 @@
+__include__:
+- ../dataset/coco_detection.yml
+- ../runtime.yml
+- ./include/dataloader.yml
+- ./include/optimizer.yml
+- ./include/rtdetr_r18vd.yml
+
+epochs: 95
+num_classes: 10
+output_dir: ./output/rtdetr_visdrone_r18vd_scale_aware
+
+train_dataloader:
+  batch_size: 4
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_train_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/train
+
+val_dataloader:
+  batch_size: 4
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/val
+
+RTDETRTransformer:
+  eval_idx: -1
+  num_decoder_layers: 3
+  num_denoising: 100
+  # Scale-aware query allocation for small object detection
+  scale_aware_query_selection: true
+  query_scale_ratios: [0.4, 0.3, 0.3]  # [P3, P4, P5] - bias toward P3 for small objects
+  scale_aware_shuffle: false  # Optional: shuffle queries to prevent order bias

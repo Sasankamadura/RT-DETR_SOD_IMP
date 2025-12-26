@@ -302,7 +302,10 @@ class RTDETRTransformer(nn.Module):
                  eval_spatial_size=None,
                  eval_idx=-1,
                  eps=1e-2, 
-                 aux_loss=True):
+                 aux_loss=True,
+                 scale_aware_query_selection=False,
+                 query_scale_ratios=None,
+                 scale_aware_shuffle=False):
 
         super(RTDETRTransformer, self).__init__()
         assert position_embed_type in ['sine', 'learned'], \
@@ -322,6 +325,15 @@ class RTDETRTransformer(nn.Module):
         self.num_decoder_layers = num_decoder_layers
         self.eval_spatial_size = eval_spatial_size
         self.aux_loss = aux_loss
+        
+        # Scale-aware query selection
+        self.scale_aware_query_selection = scale_aware_query_selection
+        self.query_scale_ratios = query_scale_ratios if query_scale_ratios is not None else [1.0 / num_levels] * num_levels
+        self.scale_aware_shuffle = scale_aware_shuffle
+        
+        # Validate query_scale_ratios matches num_levels
+        assert len(self.query_scale_ratios) == self.num_levels, \
+            f"query_scale_ratios length ({len(self.query_scale_ratios)}) must match num_levels ({self.num_levels})"
 
         # backbone feature projection
         self._build_input_proj_layer(feat_channels)
@@ -471,6 +483,7 @@ class RTDETRTransformer(nn.Module):
     def _get_decoder_input(self,
                            memory,
                            spatial_shapes,
+                           level_start_index,
                            denoising_class=None,
                            denoising_bbox_unact=None):
         bs, _, _ = memory.shape
@@ -488,7 +501,37 @@ class RTDETRTransformer(nn.Module):
         enc_outputs_class = self.enc_score_head(output_memory)
         enc_outputs_coord_unact = self.enc_bbox_head(output_memory) + anchors
 
-        _, topk_ind = torch.topk(enc_outputs_class.max(-1).values, self.num_queries, dim=1)
+        # Scale-aware query selection
+        if self.scale_aware_query_selection and self.query_scale_ratios is not None:
+            # Calculate queries per level (fix rounding to ensure exact total)
+            k_per_level = [int(self.num_queries * r) for r in self.query_scale_ratios]
+            k_per_level[-1] = self.num_queries - sum(k_per_level[:-1])  # Adjust last to guarantee exact sum
+            
+            topk_indices = []
+            for i, k_scale in enumerate(k_per_level):
+                # Use level_start_index directly (canonical RT-DETR style)
+                start = level_start_index[i]
+                end = level_start_index[i + 1] if i + 1 < len(level_start_index) else memory.shape[1]
+                
+                # Get this scale's scores
+                scale_scores = enc_outputs_class[:, start:end, :].max(-1).values
+                
+                # Select top-K for this scale
+                _, scale_topk = torch.topk(scale_scores, k_scale, dim=1)
+                
+                # Adjust indices to global position
+                topk_indices.append(scale_topk + start)
+            
+            # Concatenate all indices
+            topk_ind = torch.cat(topk_indices, dim=1)
+            
+            # Optional: shuffle queries to prevent order bias
+            if self.scale_aware_shuffle:
+                perm = torch.randperm(topk_ind.shape[1], device=topk_ind.device)
+                topk_ind = topk_ind[:, perm]
+        else:
+            # Original global selection
+            _, topk_ind = torch.topk(enc_outputs_class.max(-1).values, self.num_queries, dim=1)
         
         reference_points_unact = enc_outputs_coord_unact.gather(dim=1, \
             index=topk_ind.unsqueeze(-1).repeat(1, 1, enc_outputs_coord_unact.shape[-1]))
@@ -534,7 +577,7 @@ class RTDETRTransformer(nn.Module):
             denoising_class, denoising_bbox_unact, attn_mask, dn_meta = None, None, None, None
 
         target, init_ref_points_unact, enc_topk_bboxes, enc_topk_logits = \
-            self._get_decoder_input(memory, spatial_shapes, denoising_class, denoising_bbox_unact)
+            self._get_decoder_input(memory, spatial_shapes, level_start_index, denoising_class, denoising_bbox_unact)
 
         # decoder
         out_bboxes, out_logits = self.decoder(

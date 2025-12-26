@@ -1,0 +1,22 @@
+__include__:
+- ../dataset/coco_detection.yml
+- ../runtime.yml
+- ./include/dataloader.yml
+- ./include/optimizer.yml
+- ./include/rtdetr_r18vd.yml
+
+epochs: 95
+num_classes: 10
+output_dir: ./output/rtdetr_visdrone_r18vd
+
+train_dataloader:
+  batch_size: 4
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_train_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/train
+
+val_dataloader:
+  batch_size: 4
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/val
