@@ -10,7 +10,7 @@ ema:
   decay: 0.9998          # Faster EMA for small backbone (R18)
   warmups: 2000
 
-find_unused_parameters: False
+find_unused_parameters: True  # Required for P2 fusion modules
 
 epoches: 90              # Standard training length for RT-DETR R18
 clip_max_norm: 0.1
