@@ -3,7 +3,7 @@ Test script to verify P2 fusion implementation in RT-DETR
 """
 import torch
 import sys
-sys.path.insert(0, 'd:/IIT/RT-DETR/RT-DETR_SOD_IMP/rtdetr_pytorch')
+sys.path.insert(0, '/kaggle/working/RT-DETR_SOD_IMP/rtdetr_pytorch')
 
 from src.core import YAMLConfig
 
@@ -14,7 +14,7 @@ def test_p2_fusion():
     print("=" * 60)
     
     # Load config
-    cfg_path = 'd:/IIT/RT-DETR/RT-DETR_SOD_IMP/rtdetr_pytorch/configs/rtdetr/rtdetr_r18vd_6x_coco_p2fusion.yml'
+    cfg_path = '/kaggle/working/RT-DETR_SOD_IMP/rtdetr_pytorch/configs/rtdetr/rtdetr_r18vd_6x_coco_p2fusion.yml'
     print(f"\n1. Loading config: {cfg_path}")
     cfg = YAMLConfig(cfg_path, resume=None, use_amp=False)
     
