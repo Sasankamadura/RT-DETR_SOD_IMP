@@ -354,7 +354,8 @@ class HybridEncoder(nn.Module):
             p2 = self.p2_process(feats[0])  # feats[0] = C2 (stride 4)
             
             # Project remaining features [C3, C4, C5]
-            proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats[1:])]
+            # Use i+1 because feats[1:] skips C2, so enumerate starts at 0 but input_proj[0] is for C2
+            proj_feats = [self.input_proj[i+1](feat) for i, feat in enumerate(feats[1:])]
             # proj_feats indexing:
             #   0: P3 (stride 8)
             #   1: P4 (stride 16)
