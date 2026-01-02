@@ -1,0 +1,33 @@
+# ------------------------------------------------------------
+# Optimizer override for RT-DETR R18 baseline training
+# This file is intended to be included to override the default
+# optimizer settings without modifying the main config.
+# ------------------------------------------------------------
+
+use_ema: True
+ema:
+  type: ModelEMA
+  decay: 0.9998          # Faster EMA for small backbone (R18)
+  warmups: 2000
+
+find_unused_parameters: False
+
+epoches: 90              # Standard training length for RT-DETR R18
+clip_max_norm: 0.1
+
+optimizer:
+  type: AdamW
+  params:
+    # Disable weight decay for normalization layers and biases
+    - 
+      params: '^(?=.*(?:norm|bias)).*$'
+      weight_decay: 0.0
+
+  lr: 0.0001             # Backbone + transformer LR for R18
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
+
+lr_scheduler:
+  type: MultiStepLR
+  milestones: [60, 80]   # LR decay points for 90-epoch schedule
+  gamma: 0.1
