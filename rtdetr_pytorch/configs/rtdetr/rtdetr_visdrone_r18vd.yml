@@ -20,3 +20,9 @@ val_dataloader:
   dataset:
     ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/val
+
+# Query Difficulty-Aware Loss Reweighting
+SetCriterion:
+  query_difficulty_weighting: true  # Set to true to enable (start with false for baseline)
+  query_difficulty_gamma: 1.5        # Difficulty exponent [1.0, 2.0]
+
