@@ -14,6 +14,8 @@ from .denoising import get_contrastive_denoising_training_group
 from .utils import deformable_attention_core_func, get_activation, inverse_sigmoid
 from .utils import bias_init_with_prob
 
+from .sparse_components import SparseP2Selector # Added for Sparse P2 research
+
 
 from src.core import register
 
@@ -160,6 +162,13 @@ class TransformerDecoderLayer(nn.Module):
 
         # cross attention
         self.cross_attn = MSDeformableAttention(d_model, n_head, n_levels, n_points)
+        
+        # NOTE: Sparse P2 Attention - Standard Multi-Head Attention
+        self.sparse_cross_attn = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
+        self.sparse_norm = nn.LayerNorm(d_model)
+        self.sparse_dropout = nn.Dropout(dropout)
+        self.sparse_alpha = nn.Parameter(torch.tensor(0.0)) # Learnable gate for sparse contribution
+
         self.dropout2 = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(d_model)
 
@@ -185,6 +194,25 @@ class TransformerDecoderLayer(nn.Module):
     def forward_ffn(self, tgt):
         return self.linear2(self.dropout3(self.activation(self.linear1(tgt))))
 
+        # cross attention (Dense)
+        tgt_dense = self.cross_attn(\
+            self.with_pos_embed(tgt, query_pos_embed), 
+            reference_points, 
+            memory, 
+            memory_spatial_shapes, 
+            memory_mask)
+        
+        # cross attention (Sparse P2)
+        # We need to handle the optional sparse inputs
+        # Arguments are passed via kwargs or we expanded the signature? 
+        # Ideally we expand the signature in the wrapper, but for now let's assume valid scope or args.
+        # WAIT: I need to update the forward signature first.
+        # Let's assume the caller passes sparse_memory and sparse_pos via kwargs or extended args.
+        pass # Placeholder to match existing indentation, logic continues below
+        
+        # NOTE: Merging sparse logic here.
+        # To avoid breaking signature too much, I will assume we update the logic in one block. See below.
+    
     def forward(self,
                 tgt,
                 reference_points,
@@ -193,27 +221,45 @@ class TransformerDecoderLayer(nn.Module):
                 memory_level_start_index,
                 attn_mask=None,
                 memory_mask=None,
-                query_pos_embed=None):
+                query_pos_embed=None,
+                # New Args
+                sparse_memory=None,
+                sparse_pos_embed=None):
         # self attention
         q = k = self.with_pos_embed(tgt, query_pos_embed)
-
-        # if attn_mask is not None:
-        #     attn_mask = torch.where(
-        #         attn_mask.to(torch.bool),
-        #         torch.zeros_like(attn_mask),
-        #         torch.full_like(attn_mask, float('-inf'), dtype=tgt.dtype))
 
         tgt2, _ = self.self_attn(q, k, value=tgt, attn_mask=attn_mask)
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
 
-        # cross attention
-        tgt2 = self.cross_attn(\
+        # 1. Standard Dense Cross Attention (Deformable)
+        tgt_dense = self.cross_attn(
             self.with_pos_embed(tgt, query_pos_embed), 
             reference_points, 
             memory, 
             memory_spatial_shapes, 
             memory_mask)
+        
+        # 2. Sparse P2 Cross Attention (Standard MHA)
+        if sparse_memory is not None:
+            # Query: tgt + query_pos
+            # Key/Value: sparse_memory + sparse_pos
+            # We construct Key with Pos Embed
+            q_sparse = self.with_pos_embed(tgt, query_pos_embed)
+            k_sparse = sparse_memory if sparse_pos_embed is None else sparse_memory + sparse_pos_embed
+            v_sparse = sparse_memory
+            
+            tgt_sparse, _ = self.sparse_cross_attn(q_sparse, k_sparse, v_sparse)
+            tgt_sparse = self.sparse_dropout(tgt_sparse)
+            # tgt_sparse = self.sparse_norm(tgt_sparse) # Optional norm? usually post-add
+            
+            # 3. Fuse: We add sparse contribution. 
+            # We use a learnable alpha or just add.
+            # tgt2 = tgt_dense + tgt_sparse 
+            tgt2 = tgt_dense + self.sparse_alpha * tgt_sparse
+        else:
+            tgt2 = tgt_dense
+
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
 
@@ -243,7 +289,10 @@ class TransformerDecoder(nn.Module):
                 score_head,
                 query_pos_head,
                 attn_mask=None,
-                memory_mask=None):
+                memory_mask=None,
+                # New Args
+                sparse_memory=None,
+                sparse_pos_embed=None):
         output = tgt
         dec_out_bboxes = []
         dec_out_logits = []
@@ -255,7 +304,9 @@ class TransformerDecoder(nn.Module):
 
             output = layer(output, ref_points_input, memory,
                            memory_spatial_shapes, memory_level_start_index,
-                           attn_mask, memory_mask, query_pos_embed)
+                           attn_mask, memory_mask, query_pos_embed,
+                           sparse_memory=sparse_memory,
+                           sparse_pos_embed=sparse_pos_embed)
 
             inter_ref_bbox = F.sigmoid(bbox_head[i](output) + inverse_sigmoid(ref_points_detach))
 
@@ -321,7 +372,14 @@ class RTDETRTransformer(nn.Module):
         self.eps = eps
         self.num_decoder_layers = num_decoder_layers
         self.eval_spatial_size = eval_spatial_size
+        self.num_decoder_layers = num_decoder_layers
+        self.eval_spatial_size = eval_spatial_size
         self.aux_loss = aux_loss
+
+        # Sparse P2 Selector
+        self.use_sparse_p2 = True # Can be config
+        if self.use_sparse_p2:
+            self.sparse_p2_selector = SparseP2Selector(d_model=hidden_dim, k_sparse=300)
 
         # backbone feature projection
         self._build_input_proj_layer(feat_channels)
@@ -515,10 +573,29 @@ class RTDETRTransformer(nn.Module):
         return target, reference_points_unact.detach(), enc_topk_bboxes, enc_topk_logits
 
 
-    def forward(self, feats, targets=None):
+    def forward(self, feats, targets=None, p2_feat=None): # Update signature to accept p2_feat
 
         # input projection and embedding
         (memory, spatial_shapes, level_start_index) = self._get_encoder_input(feats)
+
+        # Sparse P2 Logic
+        sparse_memory = None
+        sparse_pos_embed = None
+        if self.use_sparse_p2 and p2_feat is not None:
+            # We assume feats[0] is P3.
+            # p2_feat should be passed explicitly from RTDETR model wrapper
+            p3_feat = feats[0] 
+            sparse_memory, sparse_coords = self.sparse_p2_selector(p2_feat, p3_feat)
+            
+            # Generate Sinusoidal Pos Embed for sparse coords
+            # sparse_coords is (B, K, 2). Decoder needs (B, K, C)
+            # Simple wrapper to match dim
+            dim_t = torch.arange(self.hidden_dim, dtype=torch.float32, device=sparse_memory.device)
+            # ... (Full pos embed logic or reuse selector's one if moved)
+            # For now, let's trust the selector or move the get_pos_embed logic here
+            # Actually selector returned coords, let's use a helper here or simplified:
+            sparse_pos_embed = self.sparse_p2_selector.get_pos_embed(sparse_coords, self.hidden_dim)
+
         
         # prepare denoising training
         if self.training and self.num_denoising > 0:
@@ -546,7 +623,9 @@ class RTDETRTransformer(nn.Module):
             self.dec_bbox_head,
             self.dec_score_head,
             self.query_pos_head,
-            attn_mask=attn_mask)
+            attn_mask=attn_mask,
+            sparse_memory=sparse_memory,
+            sparse_pos_embed=sparse_pos_embed)
 
         if self.training and dn_meta is not None:
             dn_out_bboxes, out_bboxes = torch.split(out_bboxes, dn_meta['dn_num_split'], dim=2)
