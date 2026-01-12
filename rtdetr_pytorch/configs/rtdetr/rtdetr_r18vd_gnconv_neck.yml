@@ -1,0 +1,16 @@
+__include__:
+  - ./rtdetr_visdrone_r18vd.yml
+
+RTDETR: 
+  # Backbone remains PResNet (inherited from base config)
+  encoder: HybridEncoderGnConvCCFM
+
+HybridEncoderGnConvCCFM:
+  in_channels: [128, 256, 512]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [2]
+  num_encoder_layers: 1
+  gnconv_order: 4
+  act: 'silu'
+  expansion: 0.5
