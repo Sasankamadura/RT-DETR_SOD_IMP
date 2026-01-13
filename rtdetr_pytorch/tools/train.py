@@ -8,6 +8,7 @@ import argparse
 
 import src.misc.dist as dist 
 from src.core import YAMLConfig 
+import src.zoo
 from src.solver import TASKS
 
 
