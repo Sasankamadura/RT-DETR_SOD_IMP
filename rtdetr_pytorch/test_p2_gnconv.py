@@ -60,6 +60,7 @@ def test_p2_gnconv_setup():
     # 4. Forward Pass Test
     print("\nRunning Forward Pass Test (Dry Run)...")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.eval() # CRITICAL: Set to eval mode to avoid needing 'targets'
     model = model.to(device)
     
     dummy_input = torch.randn(2, 3, 640, 640).to(device)
