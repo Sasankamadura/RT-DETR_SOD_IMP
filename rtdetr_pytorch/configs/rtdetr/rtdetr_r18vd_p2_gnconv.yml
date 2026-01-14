@@ -1,0 +1,66 @@
+__include__: [
+  '../include/rtdetr_r18vd.yml',
+]
+
+# Backbone: Enable P2 (Stage 1, Stride 4) output
+PResNet:
+  depth: 18
+  variant: d
+  freeze_at: 0
+  return_idx: [0, 1, 2, 3]  # [Stride 4, 8, 16, 32]
+  num_stages: 4
+  freeze_norm: True
+  pretrained: True 
+
+# Encoder: Configure for 4 levels and use GnConv
+HybridEncoderGnConvCCFM:
+  in_channels: [64, 128, 256, 512] # Match ResNet18 P2, P3, P4, P5
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [3] # Apply AIFI only to the last level (P5)
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0.
+  enc_act: 'gelu'
+  expansion: 1.0
+  depth_mult: 1.0
+  act: 'silu'
+  gnconv_order: 4
+
+# Decoder: Configure for 4 levels
+RTDETRTransformer:
+  feat_channels: [256, 256, 256, 256]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  num_levels: 4  # Crucial: 4 levels now
+  num_queries: 300
+  num_decoder_layers: 6
+  num_denoising: 100
+  eval_idx: -1
+  eval_spatial_size: [640, 640]
+
+# Update Model Architecture to use new components
+RTDETR:
+  backbone: PResNet
+  encoder: HybridEncoderGnConvCCFM
+  decoder: RTDETRTransformer
+  multi_scale: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+  
+# Optimizer adjustment (Optional: P2 increases compute, maybe needs different LR, but sticking to default)
+optimizer:
+  type: AdamW
+  params:
+    - 
+      params: '^(?=.*backbone)(?!.*norm|.*bn).*$'
+      lr: 0.00001
+    - 
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+    - 
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:gnconv)).*$' # Ensure gnconv gets trained
+      lr: 0.0001
+
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
