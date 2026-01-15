@@ -1,0 +1,60 @@
+__include__: [
+  'include/rtdetr_r18vd.yml',
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  'include/dataloader.yml',
+  'include/optimizer_r18.yml'
+]
+
+# -----------------------------------------------------------------
+# P2 Feature Fusion (Standard HybridEncoder - No GnConv)
+# -----------------------------------------------------------------
+output_dir: ./output/rtdetr_r18vd_p2
+epochs: 90
+num_classes: 10
+
+train_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_train_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/train
+  batch_size: 2
+  num_workers: 4
+
+val_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/val
+  batch_size: 2
+  num_workers: 4
+
+# Enable P2 in Backbone
+PResNet:
+  return_idx: [0, 1, 2, 3]  # P2, P3, P4, P5
+
+# Update Encoder for 4 levels (Standard HybridEncoder, not GnConv)
+HybridEncoder:
+  in_channels: [64, 128, 256, 512]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [3]  # Apply AIFI to P5 only
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0.
+  enc_act: 'gelu'
+  expansion: 0.5
+  depth_mult: 1
+  act: 'silu'
+  eval_spatial_size: [640, 640]
+
+# Update Decoder for 4 levels
+RTDETRTransformer:
+  feat_channels: [256, 256, 256, 256]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  num_levels: 4
+  num_queries: 300
+  num_decoder_layers: 3
+  num_denoising: 100
+  eval_idx: -1
+  eval_spatial_size: [640, 640]
