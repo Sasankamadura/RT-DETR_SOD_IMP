@@ -1,0 +1,66 @@
+__include__: [
+  'include/rtdetr_r18vd.yml',
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  'include/dataloader.yml',
+  'include/optimizer_r18.yml'
+]
+
+# -----------------------------------------------------------------
+# P2 Fast Hybrid (P2=Standard, P3-P5=GnConv)
+# -----------------------------------------------------------------
+output_dir: ./output/rtdetr_r18vd_p2_fast_gnconv
+epochs: 90
+num_classes: 10
+
+train_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_train_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/train
+  batch_size: 4
+  num_workers: 4
+
+val_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/val
+  batch_size: 4
+  num_workers: 4
+
+
+PResNet:
+  return_idx: [0, 1, 2, 3] # P2, P3, P4, P5
+
+# Use the NEW Fast Hybrid Encoder
+HybridEncoderFastGnConv:
+  in_channels: [64, 128, 256, 512]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [3]
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0.
+  enc_act: 'gelu'
+  expansion: 1.0
+  depth_mult: 1.0
+  act: 'silu'
+  gnconv_order: 4
+  min_stride_for_gnconv: 8  # <--- Critical: Stride 4 (P2) uses RepVGG, others use GnConv
+
+RTDETRTransformer:
+  feat_channels: [256, 256, 256, 256]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  num_levels: 4
+  num_queries: 300
+  num_decoder_layers: 6
+  num_denoising: 100
+  eval_idx: -1
+  eval_spatial_size: [640, 640]
+
+RTDETR:
+  backbone: PResNet
+  encoder: HybridEncoderFastGnConv  # <--- Using the Fast Hybrid Class
+  decoder: RTDETRTransformer
+  multi_scale: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
