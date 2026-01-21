@@ -1,0 +1,31 @@
+{
+  "config": "/kaggle/working/RT-DETR_SOD_IMP/rtdetr_pytorch/configs/rtdetr/rtdetr_r18vd_p2_gnconv.yml",
+  "checkpoint": "/kaggle/working/RT-DETR_SOD_IMP/rtdetr_pytorch/output/rtdetr_r18vd_p2_gnconv/checkpoint0089.pth",
+  "device": "cuda",
+  "total_params": 28088770,
+  "trainable_params": 28060258,
+  "layer_stats": {
+    "backbone": {
+      "total_params": 11190112,
+      "num_layers": 23
+    },
+    "encoder": {
+      "total_params": 9361920,
+      "num_layers": 330
+    },
+    "decoder": {
+      "total_params": 7536738,
+      "num_layers": 209
+    }
+  },
+  "flops": {
+    "torchinfo_params": 34209218,
+    "torchinfo_mult_adds": 69771146032,
+    "torchinfo_gflops": 69.771146032
+  },
+  "memory": {
+    "allocated_mb": 121.01708984375,
+    "reserved_mb": 610.0,
+    "max_allocated_mb": 497.35986328125
+  }
+}

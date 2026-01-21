@@ -1,0 +1,41 @@
+{
+  "config": "/kaggle/working/RT-DETR_SOD_IMP/rtdetr_pytorch/configs/rtdetr/rtdetr_r18vd_gnconv_neck.yml",
+  "checkpoint": "/kaggle/input/3-10-12-rt-detrr18-train-visdrone2019-gnconv/RT-DETR_SOD_IMP/rtdetr_pytorch/output/rtdetr_visdrone_r18vd/checkpoint0089.pth",
+  "device": "cuda",
+  "total_params": 18985720,
+  "trainable_params": 18957208,
+  "layer_stats": {
+    "backbone": {
+      "total_params": 11190112,
+      "num_layers": 23
+    },
+    "encoder": {
+      "total_params": 3866112,
+      "num_layers": 237
+    },
+    "decoder": {
+      "total_params": 3929496,
+      "num_layers": 116
+    }
+  },
+  "flops": {
+    "torchinfo_params": 21970520,
+    "torchinfo_mult_adds": 22911414148,
+    "torchinfo_gflops": 22.911414148
+  },
+  "memory": {
+    "allocated_mb": 85.3974609375,
+    "reserved_mb": 258.0,
+    "max_allocated_mb": 175.8818359375
+  },
+  "fps_benchmark": {
+    "640x640": {
+      "latency_mean_ms": 30.393518439996114,
+      "latency_std_ms": 1.583719895408033,
+      "latency_min_ms": 28.821866000043883,
+      "latency_max_ms": 44.835748999958014,
+      "fps_mean": 32.90175179863539,
+      "fps_std": 631.4247884992049
+    }
+  }
+}
