@@ -409,7 +409,8 @@ class HybridEncoderSlimFast(nn.Module):
             
             # lateral_conv adapts high channels to low channels (e.g 256->128)
             feat_high = self.lateral_convs[len(self.in_channels) - 1 - idx](feat_high)
-            inner_outs[0] = feat_high
+            # inner_outs[0] = feat_high  <-- BUG FIX: Do NOT overwrite the high-level feature (256) with the projected one (128).
+            # We need the original 256-ch feature for the Bottom-Up PAN path later.
             
             upsample_feat = F.interpolate(feat_high, scale_factor=2., mode='nearest')
             
