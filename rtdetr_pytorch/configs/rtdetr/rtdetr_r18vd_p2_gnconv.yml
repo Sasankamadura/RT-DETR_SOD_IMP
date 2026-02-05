@@ -13,18 +13,20 @@ output_dir: ./output/rtdetr_r18vd_p2_gnconv
 epochs: 95
 num_classes: 10
 
+# Note: Update these paths for your LOCAL environment if running locally.
+# Currently set to Kaggle paths as per your request.
 train_dataloader:
   dataset:
     ann_file: /kaggle/working/annotations_VisDrone_train_remap.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/train
-  batch_size: 4
+  batch_size: 2
   num_workers: 4
 
 val_dataloader:
   dataset:
     ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/val
-  batch_size: 4
+  batch_size: 2
   num_workers: 4
 
 # -----------------------------------------------------------------
