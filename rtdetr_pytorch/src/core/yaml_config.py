@@ -35,6 +35,7 @@ class YAMLConfig(BaseConfig):
         self.autocast = cfg.get('autocast', dict())
         self.find_unused_parameters = cfg.get('find_unused_parameters', None)
         self.clip_max_norm = cfg.get('clip_max_norm', 0.)
+        self.gradient_accumulation_steps = cfg.get('gradient_accumulation_steps', 1)
 
 
     @property

@@ -1,0 +1,11 @@
+__include__: [
+  'rtdetr_r18vd_p2_gnconv.yml'
+]
+
+gradient_accumulation_steps: 2
+
+train_dataloader:
+  batch_size: 2
+
+val_dataloader:
+  batch_size: 2

@@ -36,7 +36,8 @@ class DetSolver(BaseSolver):
             
             train_stats = train_one_epoch(
                 self.model, self.criterion, self.train_dataloader, self.optimizer, self.device, epoch,
-                args.clip_max_norm, print_freq=args.log_step, ema=self.ema, scaler=self.scaler)
+                args.clip_max_norm, print_freq=args.log_step, ema=self.ema, scaler=self.scaler,
+                gradient_accumulation_steps=args.gradient_accumulation_steps)
 
             self.lr_scheduler.step()
             
