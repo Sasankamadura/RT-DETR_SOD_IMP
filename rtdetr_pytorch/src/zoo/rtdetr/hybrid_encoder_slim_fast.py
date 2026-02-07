@@ -233,16 +233,31 @@ class HybridEncoderSlimFast(nn.Module):
                  eval_spatial_size=None,
                  gnconv_order=4,
                  min_stride_for_gnconv=8,
+                 gnconv_rule='greater_or_equal',  # New arg: 'greater_or_equal' (default) or 'less_than'
                  p2_hidden_dim=128):   # New arg for Slim P2
         super().__init__()
         self.in_channels = in_channels
         self.feat_strides = feat_strides
+        self.gnconv_rule = gnconv_rule
         
         # Calculate dimensions per level
-        # If stride < min_stride_for_gnconv (i.e. P2), use p2_hidden_dim. Else hidden_dim.
+        # Logic to determine if a level uses GnConv or not, and thus if it is "slim" or not?
+        # Actually dims_per_level depends on "slim" logic which was tied to P2 (stride < 8).
+        # We should probably keep the dim logic consistent with the original "Slim P2" intent 
+        # (reduce dim for high-res), but the USER request specifically asked for GnConv on P2.
+        # Implied: P2 is (Stride 4). 
+        # If gnconv_rule='less_than' and min_stride=8 => P2 uses GnConv.
+        
         self.dims_per_level = []
         for s in feat_strides:
-            if s < min_stride_for_gnconv:
+            # We keep the dimension reduction logic TIED to the Stride < 8 assumption for "Slim" nature, 
+            # OR we should update this too? 
+            # The user request said "SLIM P2... vs GnConv". 
+            # Usually GnConv is heavier, so we might want 128 dim for it if it's on P2.
+            # Let's keep the dimension logic as "Stride < 8 => p2_hidden_dim" regardless of block type.
+            if s < 8: # Hardcoded 8 or derived? Original used min_stride_for_gnconv=8. 
+                      # But if we change rule, we shouldn't break dim logic.
+                      # Let's assume Stride 4 is ALWAYS the "Slim" layer candidate.
                 self.dims_per_level.append(p2_hidden_dim)
             else:
                 self.dims_per_level.append(hidden_dim)
@@ -305,7 +320,12 @@ class HybridEncoderSlimFast(nn.Module):
             # contact(upsample, low) -> 2 * low_dim input
             
             dest_stride = feat_strides[low_level_idx]
-            use_gnconv = dest_stride >= min_stride_for_gnconv
+            
+            # GnConv Logic Selection
+            if self.gnconv_rule == 'less_than':
+                use_gnconv = dest_stride < min_stride_for_gnconv
+            else: # default 'greater_or_equal'
+                use_gnconv = dest_stride >= min_stride_for_gnconv
             
             self.fpn_blocks.append(
                 CSPHybridLayer(in_channels = low_dim * 2, 
@@ -341,7 +361,12 @@ class HybridEncoderSlimFast(nn.Module):
             # concat(downsample, high) -> high_dim + high_dim = 2*high_dim
             
             dest_stride = feat_strides[high_level_idx]
-            use_gnconv = dest_stride >= min_stride_for_gnconv
+            
+            # GnConv Logic Selection
+            if self.gnconv_rule == 'less_than':
+                use_gnconv = dest_stride < min_stride_for_gnconv
+            else: # default 'greater_or_equal'
+                use_gnconv = dest_stride >= min_stride_for_gnconv
 
             self.pan_blocks.append(
                 CSPHybridLayer(in_channels = high_dim * 2,
