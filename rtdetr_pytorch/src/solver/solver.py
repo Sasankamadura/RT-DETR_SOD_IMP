@@ -129,6 +129,20 @@ class BaseSolver(object):
                     self.lr_scheduler.milestones = Counter(milestones)
                     print(f'Overriding milestones to {milestones}')
 
+                    # Recalculate and reset LR based on new milestones
+                    # This fixes the issue where loaded optimizer state has decayed LR from old schedule
+                    if hasattr(self.lr_scheduler, 'base_lrs') and hasattr(self.lr_scheduler, 'last_epoch'):
+                         last_epoch = self.lr_scheduler.last_epoch
+                         count = sum(1 for m in milestones if m <= last_epoch)
+                         gamma = self.lr_scheduler.gamma
+                         
+                         for i, group in enumerate(self.optimizer.param_groups):
+                             if i < len(self.lr_scheduler.base_lrs):
+                                 base_lr = self.lr_scheduler.base_lrs[i]
+                                 new_lr = base_lr * (gamma ** count)
+                                 group['lr'] = new_lr
+                                 print(f'Resetting param_group[{i}] LR to {new_lr} (base_lr={base_lr}, decay_count={count})')
+
         if getattr(self, 'scaler', None) and 'scaler' in state:
             self.scaler.load_state_dict(state['scaler'])
             print('Loading scaler.state_dict')
