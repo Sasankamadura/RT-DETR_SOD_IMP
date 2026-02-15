@@ -9,6 +9,9 @@ epoches: 95
 num_classes: 10
 output_dir: ./output/rtdetr_visdrone_eb2
 
+# FIX: Enable unused parameter detection for DDP
+find_unused_parameters: True
+
 train_dataloader:
   batch_size: 4
   dataset:

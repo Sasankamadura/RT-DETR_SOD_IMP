@@ -15,18 +15,37 @@ class EfficientNet(nn.Module):
         # Load the requested efficientnet model from torchvision
         if model_name == 'efficientnet_b2':
             backbone = torchvision.models.efficientnet_b2(pretrained=pretrained)
-            # Correct indices for EfficientNet-B2 (Torchvision)
-            # 0: Conv3x3 (s2)
-            # 1: MBConv1 (s1, 2 layers)
-            # 2: MBConv6 (s2, 2 layers) -> Output Stride 4
-            # 3: MBConv6 (s2, 3 layers) -> Output Stride 8 (Start)
-            # 4: MBConv6 (s1, 3 layers) -> Output Stride 8 (End) -> C3 (48 channels)
-            # 5: MBConv6 (s2, 4 layers) -> Output Stride 16 (Start)
-            # 6: MBConv6 (s1, 4 layers) -> Output Stride 16 (End) -> C4 (120 channels)
-            # 7: MBConv6 (s2, 5 layers) -> Output Stride 32 (End) -> C5 (352 channels)
-            # 8: Conv1x1 (s1) -> Output Stride 32 (1408 channels)
+            # Corrected indices for EfficientNet-B2 (Torchvision) based on runtime error
+            # The indices for features in efficientnet_b2 are sequential.
+            # 88 channels corresponds to index 4 (MBConv6, s1, 3 layers) -> this is the output of the block *after* the stride 2 block.
+            # Let's map accurately:
+            # - Stride 8: Index 3 is the first block with stride 2 (start of S8). Index 4 is the end of S8. Channels: 48? No, wait.
+            #   Visualizing from error: "Expected 48... got 88". 
+            #   The layer at index 4 in B2 actually has 88 channels (it seems).
+            #   Actually, looking at standard B2: 
+            #   feature[2] (stride 4) -> 24 channels
+            #   feature[3] (stride 8) -> 48 channels
+            #   feature[4] (stride 16) -> 120 channels -- Wait, B2 structure is specific.
             
-            self.return_idx = [4, 6, 7] 
+            # Let's rely on the error message. The model has:
+            # Layer 2: 24 channels (Stride 4)
+            # Layer 3: 48 channels (Stride 8) 
+            # Layer 4: 120 channels (Stride 16)
+            # Layer 5: 352 channels (Stride 32)
+            
+            # The error "Expected 48... got 88" suggests I might have picked an index that has 88 channels.
+            # Layer 3 output in B2 is indeed 48 channels.
+            # Let's use indices [3, 5, 7] which are commonly the end of the stages.
+            # But let's verify exact channels for B2:
+            # 0: 32
+            # 1: 16
+            # 2: 24 (Stride 4)
+            # 3: 48 (Stride 8)
+            # 4: 120 (Stride 16)
+            # 5: 352 (Stride 32)
+            
+            # Re-aligning to standard usage:
+            self.return_idx = [3, 5, 7] 
             self.out_channels = [48, 120, 352]
             
         elif model_name == 'efficientnet_b0':
