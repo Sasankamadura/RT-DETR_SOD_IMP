@@ -521,7 +521,7 @@ class RTDETRTransformer(nn.Module):
         (memory, spatial_shapes, level_start_index) = self._get_encoder_input(feats)
         
         # prepare denoising training
-        if self.training and self.num_denoising > 0:
+        if self.training and self.num_denoising > 0 and targets is not None:
             denoising_class, denoising_bbox_unact, attn_mask, dn_meta = \
                 get_contrastive_denoising_training_group(targets, \
                     self.num_classes, 
