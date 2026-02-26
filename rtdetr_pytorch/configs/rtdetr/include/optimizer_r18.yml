@@ -29,5 +29,5 @@ optimizer:
 
 lr_scheduler:
   type: MultiStepLR
-  milestones: [110]   # LR decay points for 90-epoch schedule
+  milestones: [156]   # LR decay points for 90-epoch schedule
   gamma: 0.1
