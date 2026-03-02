@@ -18,14 +18,14 @@ train_dataloader:
   dataset:
     ann_file: /kaggle/working/annotations_VisDrone_train_fixed.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/train
-  batch_size: 2
+  batch_size: 4
   num_workers: 4
 
 val_dataloader:
   dataset:
     ann_file: /kaggle/working/annotations_VisDrone_val_fixed.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/val
-  batch_size: 2
+  batch_size: 4
   num_workers: 4
 
 # Enable P2 in Backbone
