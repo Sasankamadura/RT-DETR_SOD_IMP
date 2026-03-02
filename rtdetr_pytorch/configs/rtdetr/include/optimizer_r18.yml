@@ -12,7 +12,7 @@ ema:
 
 find_unused_parameters: False
 
-epoches: 42              # Standard training length for RT-DETR R18
+epoches: 82              # Standard training length for RT-DETR R18
 clip_max_norm: 0.1
 
 optimizer:
@@ -29,5 +29,5 @@ optimizer:
 
 lr_scheduler:
   type: MultiStepLR
-  milestones: [42]   # LR decay points for 90-epoch schedule
+  milestones: [82]   # LR decay points for 90-epoch schedule
   gamma: 0.1
