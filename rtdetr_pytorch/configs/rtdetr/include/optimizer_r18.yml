@@ -12,7 +12,7 @@ ema:
 
 find_unused_parameters: False
 
-epoches: 48             
+epoches: 92             
 clip_max_norm: 0.1
 
 optimizer:
@@ -29,5 +29,5 @@ optimizer:
 
 lr_scheduler:
   type: MultiStepLR
-  milestones: [48]   # LR decay points for 50-epoch schedule
+  milestones: [85]   # LR decay points for 100-epoch schedule
   gamma: 0.1
