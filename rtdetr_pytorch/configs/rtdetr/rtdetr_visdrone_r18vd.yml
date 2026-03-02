@@ -12,11 +12,11 @@ output_dir: ./output/rtdetr_visdrone_r18vd
 train_dataloader:
   batch_size: 4
   dataset:
-    ann_file: /kaggle/working/annotations_VisDrone_train_remap.json
+    ann_file: /kaggle/working/annotations_VisDrone_train_fixed.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/train
 
 val_dataloader:
   batch_size: 4
   dataset:
-    ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
+    ann_file: /kaggle/working/annotations_VisDrone_val_fixed.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/val
