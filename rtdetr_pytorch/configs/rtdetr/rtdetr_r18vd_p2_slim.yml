@@ -12,7 +12,7 @@ __include__: [
 # - P3-P5 (Stride 8+): RepVGG + 256 Channels (Standard)
 # -----------------------------------------------------------------
 output_dir: ./output/rtdetr_r18vd_p2_slim
-epochs: 42
+epochs: 86
 num_classes: 10
 remap_mscoco_category: False
 
