@@ -5,8 +5,9 @@ __include__:
 - ./include/optimizer_r18.yml
 - ./include/rtdetr_r18vd.yml
 
-epochs: 95
+epochs: 42
 num_classes: 10
+remap_mscoco_category: False
 output_dir: ./output/rtdetr_visdrone_r18vd
 
 train_dataloader:

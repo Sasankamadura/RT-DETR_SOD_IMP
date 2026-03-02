@@ -106,7 +106,8 @@ class ConvertCocoPolysToMask(object):
         if self.remap_mscoco_category:
             classes = [mscoco_category2label[obj["category_id"]] for obj in anno]
         else:
-            classes = [obj["category_id"] for obj in anno]
+            # Shift 1-based JSON category_ids to 0-based PyTorch labels
+            classes = [obj["category_id"] - 1 for obj in anno]
             
         classes = torch.tensor(classes, dtype=torch.int64)
 
