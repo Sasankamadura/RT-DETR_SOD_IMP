@@ -62,6 +62,8 @@ class RTDETRPostProcessor(nn.Module):
             from ...data.coco import mscoco_label2category
             labels = torch.tensor([mscoco_label2category[int(x.item())] for x in labels.flatten()])\
                 .to(boxes.device).reshape(labels.shape)
+        else:
+            labels = labels + 1
 
         results = []
         for lab, box, sco in zip(labels, boxes, scores):
