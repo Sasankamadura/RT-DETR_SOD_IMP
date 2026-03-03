@@ -32,8 +32,9 @@ class EfficientNet(nn.Module):
         else:
             raise ValueError(f"Model {model_name} not explicitly supported in this wrapper yet.")
 
-        # Extract features container
-        self.features = backbone.features
+        # Extract features container, skipping unused trailing layers to avoid DDP parameter errors
+        max_idx = max(self.return_idx)
+        self.features = backbone.features[:max_idx + 1]
         
         # Freeze parameters if requested
         if freeze_at >= 0:
