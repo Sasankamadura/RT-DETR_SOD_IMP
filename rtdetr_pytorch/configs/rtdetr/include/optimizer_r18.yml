@@ -12,7 +12,7 @@ ema:
 
 find_unused_parameters: False
 
-epoches: 86              # Standard training length for RT-DETR R18
+epoches: 102              # Standard training length for RT-DETR R18
 clip_max_norm: 0.1
 
 optimizer:
