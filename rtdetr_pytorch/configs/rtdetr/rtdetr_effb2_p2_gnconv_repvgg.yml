@@ -1,0 +1,73 @@
+__include__: [
+  'include/rtdetr_r18vd.yml',
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  'include/dataloader.yml',
+  'include/optimizer_r18.yml'
+]
+
+# -----------------------------------------------------------------
+# P2 GnConv Hybrid (P2=GnConv, P3-P5=Standard RepVVG)
+# using EfficientNet-B2 as Backbone
+# -----------------------------------------------------------------
+output_dir: ./output/rtdetr_effb2_p2_gnconv_repvgg
+epochs: 86
+num_classes: 10
+remap_mscoco_category: False
+
+train_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_train_fixed.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/train
+  batch_size: 4
+  num_workers: 4
+
+val_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_val_fixed.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/val
+  batch_size: 4
+  num_workers: 4
+
+
+EfficientNet:
+  model_name: efficientnet_b2
+  pretrained: True
+  freeze_at: -1
+  freeze_norm: False
+  return_idx: [2, 3, 5, 7]
+  out_channels: [24, 48, 120, 352]
+
+# Use the NEW P2-GnConv Hybrid Encoder
+HybridEncoderP2GnConv:
+  in_channels: [24, 48, 120, 352]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [3]
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0.
+  enc_act: 'gelu'
+  expansion: 0.5
+  depth_mult: 1.0
+  act: 'silu'
+  gnconv_order: 4
+  max_stride_for_gnconv: 4  # <--- Critical: Stride 4 (P2) uses GnConv, others (8,16,32) use RepVGG
+
+RTDETRTransformer:
+  feat_channels: [256, 256, 256, 256]
+  feat_strides: [4, 8, 16, 32]
+  hidden_dim: 256
+  num_levels: 4
+  num_queries: 300
+  num_decoder_layers: 3
+  num_denoising: 100
+  eval_idx: -1
+  eval_spatial_size: [640, 640]
+
+RTDETR:
+  backbone: EfficientNet
+  encoder: HybridEncoderP2GnConv  # <--- Using the P2-GnConv Hybrid Class
+  decoder: RTDETRTransformer
+  multi_scale: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
