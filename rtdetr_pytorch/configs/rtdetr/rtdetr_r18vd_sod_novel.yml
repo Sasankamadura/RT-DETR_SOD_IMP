@@ -14,6 +14,16 @@ epochs: 30
 num_classes: 10
 remap_mscoco_category: False
 
+train_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_train_fixed.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/train
+
+val_dataloader:
+  dataset:
+    ann_file: /kaggle/working/annotations_VisDrone_val_fixed.json
+    img_folder: /kaggle/input/visdrone-2019-coco-format/val
+
 PResNet:
   return_idx: [0, 1, 2, 3] # P2, P3, P4, P5
 
