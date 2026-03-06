@@ -249,7 +249,7 @@ abc channels for DWConv: 240
 
 The **16-channel gating seed** (`pwa`) is extremely thin — it provides the initial spatial gate that is then multiplied and projected up through 3 recursive levels. This bottleneck means the first gating operation has very limited representational capacity, which degrades the quality of all subsequent gated features. The baseline uses full 256-dim RepVgg blocks throughout and does not suffer this limitation.
 
-> **Fix**: Set `expansion: 1.0` in the GnConv config to match the baseline's capacity. This was correctly applied in Experiment 7 (`expansion: 1.0`).
+> **Note on the fix**: The naive fix is `expansion: 1.0`, but this comes with a meaningful FPS cost. See **Section 10.10** for the full trade-off analysis before making this change.
 
 ---
 
@@ -383,7 +383,7 @@ Apply RepVgg on P2 (for efficient high-resolution processing), and GnConv on P3�
 | Root Cause | Severity | Fix |
 |:---|:---:|:---|
 | GnConv applied to ALL scales (not just P2) | Medium | Test selective application (Strategies A and B above) |
-| `expansion=0.5` → 16-ch gating seed too weak | **High** | Use `expansion=1.0` |
+| `expansion=0.5` → 16-ch gating seed too weak | **High** | `expansion=1.0` fixes accuracy but costs FPS (see §10.10) |
 | 7×7 DWConv too global at P4/P5 (20×20 maps) | **High** | Limit GnConv to large feature maps (P2/P3) |
 | GnConv is a context op, not a localization op | **High** | Combine with P2 (as in Exp 7); or only apply at appropriate scales |
 | Double residual → lazy learning | Medium | Remove internal residual in `GnConvFusionBlock` when inside CSP |
@@ -391,4 +391,68 @@ Apply RepVgg on P2 (for efficient high-resolution processing), and GnConv on P3�
 | Batch size 2 (vs 4 baseline) | Medium | Use batch_size=4 |
 | LayerNorm + BatchNorm normalization mismatch | Low | Use consistent normalization throughout the encoder |
 | 3 fewer training epochs | Low | Train to same epoch count |
+
+---
+
+### 10.10 Does `expansion=0.5` Hurt FPS? — The Actual Trade-off
+
+> **Short answer**: `expansion=0.5` was chosen intentionally to **help** FPS (fewer FLOPs per block). Switching to `expansion=1.0` to fix the accuracy problem will **hurt FPS further**. However, expansion is not the primary cause of GnConv's FPS loss — the serial computation structure is.
+
+#### GFLOPs per CSP Block
+
+The table below shows the theoretical FLOPs for one CSP fusion block at each scale:
+
+| Scale | Feat Map | Baseline RepVgg `exp=1.0` | GnConv `exp=0.5` (current) | GnConv `exp=1.0` (proposed) |
+|:---:|:---:|:---:|:---:|:---:|
+| P3 (S8) | 80×80 | 28.5 GFLOPs | **4.8 GFLOPs (17%)** | 13.5 GFLOPs (47%) |
+| P4 (S16) | 40×40 | 7.1 GFLOPs | **1.2 GFLOPs (17%)** | 3.4 GFLOPs (47%) |
+| P5 (S32) | 20×20 | 1.8 GFLOPs | **0.3 GFLOPs (17%)** | 0.8 GFLOPs (47%) |
+
+With 4 total CSP blocks (2 FPN + 2 PAN), `expansion=0.5` saves roughly **22.6 GFLOPs** of encoder compute compared to `expansion=1.0`. That is a real FPS benefit.
+
+**But GnConv is still 40% slower than the baseline despite having only 17% of its FLOPs** — because GFLOPs alone do not predict GPU inference speed.
+
+#### The Real Bottleneck: Serial Kernel Launches
+
+GPU inference latency depends on two things: **compute time** and **kernel launch overhead**. For small feature maps like P4 (40×40) and P5 (20×20), compute time is negligible and launch overhead dominates.
+
+| Block | GPU kernel launches per block | Parallelism |
+|:---|:---:|:---|
+| `RepVggBlock` | ~3 launches: [conv1+conv2 concurrently] → [add] → [activation] | High — two branches compute in parallel |
+| `GnConvFusionBlock` | **~11 serial launches** | None — each step must await the previous |
+
+With 3 blocks per CSP layer and 4 CSP layers in the CCFM (2 FPN blocks + 2 PAN blocks, each containing 3 RepVgg/GnConv blocks = 12 total bottleneck blocks):
+
+- Baseline: 12 blocks × ~3 launches = **≈ 36 launches**, but the 2 branches of each RepVgg block run in parallel, reducing actual synchronization points to ~24 — and many of these 24 syncs are non-blocking due to independent CUDA streams.
+- GnConv: 12 blocks × 11 launches = **≈ 132 serial launches**, where every single launch is a hard synchronization barrier (the next step uses the output of the previous step)
+
+This 5.5× increase in serial kernel launches is the dominant reason GnConv runs at 32.9 FPS vs the baseline's 46.6 FPS — **not** the expansion setting.
+
+The serial chain comes from GnConv's recursive gating design:
+
+```python
+# These steps CANNOT be parallelized — each waits for the previous result:
+# (pwa and abc are derived from splitting proj_in(x) output at step 1)
+fused = proj_in(x)             # step 1: expand x to total_dim channels
+pwa, abc = split(fused)        # step 2: memory split (pwa=gate seed, abc=spatial branch)
+dw_abc = dwconv(abc)           # step 3: 7×7 DWConv on all ABC channels (needs step 2)
+x = pwa * dw_list[0]          # step 4: first gate multiply (needs step 3)
+x = pws[0](x) * dw_list[1]   # step 5: project + multiply (needs step 4)
+x = pws[1](x) * dw_list[2]   # step 6: project + multiply (needs step 5)
+x = pws[2](x) * dw_list[3]   # step 7: project + multiply (needs step 6)
+x = proj_out(x)                # step 8: output projection
+```
+
+RepVgg, by contrast, computes `conv1(x)` and `conv2(x)` independently in parallel, and only needs one synchronization point at the final addition.
+
+#### Practical Implications
+
+| Change | Effect on Accuracy | Effect on FPS |
+|:---|:---:|:---:|
+| `expansion: 0.5` → `expansion: 1.0` | **+** (stronger gating seed) | **−** (~5–15 FPS additional loss) |
+| Remove GnConv from P4/P5, keep only P3 | Small negative | **++** (fewer serial launches) |
+| Remove GnConv from P4/P5, use only on P2 | Small negative | **+++** (P2 is large, GPU-efficient) |
+| Reduce GnConv order: 4 → 2 | **−** (less context) | **+** (8 launches → 4 per block) |
+
+**Conclusion**: `expansion=0.5` genuinely helps FPS compared to `expansion=1.0`, so it is not wrong from a speed perspective. The problem is that it cripples GnConv's representational capacity as a side effect. The best path forward is to fix the accuracy problem through **scale-selective placement** (Section 10.8 Strategies A and B) — applying GnConv only where the feature maps are large enough to be GPU-efficient and locally precise — rather than simply raising expansion and accepting another FPS penalty.
 
