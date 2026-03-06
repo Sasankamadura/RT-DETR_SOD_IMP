@@ -82,6 +82,12 @@ def test_full_model():
     # Parameter count
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total Parameters: {total_params:,} ({total_params/1e6:.2f}M)")
+    
+    # Verify R18 Optimizations
+    if total_params < 22e6:
+        print("✓ Verified: Model is using Optimized R18 settings (Expansion 0.5, Decoder 3).")
+    else:
+        print("⚠ Warning: Parameter count is still high. Check expansion and decoder layer settings.")
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():

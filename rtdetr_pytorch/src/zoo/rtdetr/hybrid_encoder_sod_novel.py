@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F 
 
 from .utils import get_activation
-from .coord_gnconv import CoordGnConv
+from .coord_gnconv import CoordGnConv, SPDConv
 
 from src.core import register
 
@@ -207,12 +207,12 @@ class HybridEncoderNovelCoordGnConv(nn.Module):
                 CSPCoordGnLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion, reduction=reduction)
             )
 
-        # bottom-up pan - USING CoordGnConv
+        # bottom-up pan - USING CoordGnConv + SPD Downsampling
         self.downsample_convs = nn.ModuleList()
         self.pan_blocks = nn.ModuleList()
         for _ in range(len(in_channels) - 1):
             self.downsample_convs.append(
-                ConvNormLayer(hidden_dim, hidden_dim, 3, 2, act=act)
+                SPDConv(hidden_dim, hidden_dim)
             )
             self.pan_blocks.append(
                 CSPCoordGnLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion, reduction=reduction)
