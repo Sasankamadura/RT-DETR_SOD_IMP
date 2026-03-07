@@ -130,6 +130,7 @@ def test_scale_aware_query_allocation():
             scale_aware_query_selection=False
         )
         
+        model_vanilla.eval()
         with torch.no_grad():
             outputs_vanilla = model_vanilla(feats)
         

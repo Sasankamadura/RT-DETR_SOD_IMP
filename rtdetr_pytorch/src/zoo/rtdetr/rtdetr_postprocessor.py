@@ -63,7 +63,8 @@ class RTDETRPostProcessor(nn.Module):
             labels = torch.tensor([mscoco_label2category[int(x.item())] for x in labels.flatten()])\
                 .to(boxes.device).reshape(labels.shape)
         else:
-            labels = labels + 1
+            # Shift 0-based PyTorch labels back to 1-based JSON category_ids for VisDrone
+            labels += 1
         
         results = []
         for lab, box, sco in zip(labels, boxes, scores):
@@ -76,7 +77,7 @@ class RTDETRPostProcessor(nn.Module):
     def deploy(self, ):
         self.eval()
         self.deploy_mode = True
-        return self 
+        return self
 
     @property
     def iou_types(self, ):
