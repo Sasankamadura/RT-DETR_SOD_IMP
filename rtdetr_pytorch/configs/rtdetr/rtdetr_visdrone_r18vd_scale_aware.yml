@@ -5,8 +5,9 @@ __include__:
 - ./include/optimizer_r18.yml
 - ./include/rtdetr_r18vd.yml
 
-epoches: 95
+epoches: 40
 num_classes: 10
+remap_mscoco_category: False
 output_dir: ./output/rtdetr_visdrone_r18vd_scale_aware
 
 train_dataloader:
@@ -21,11 +22,19 @@ val_dataloader:
     ann_file: /kaggle/working/annotations_VisDrone_val_remap.json
     img_folder: /kaggle/input/visdrone-2019-coco-format/val
 
+HybridEncoder:
+  expansion: 0.5
+
 RTDETRTransformer:
   eval_idx: -1
   num_decoder_layers: 3
   num_denoising: 100
   # Scale-aware query allocation for small object detection
   scale_aware_query_selection: true
+  num_queries: 500
   query_scale_ratios: [0.4, 0.3, 0.3]  # [P3, P4, P5] - bias toward P3 for small objects
   scale_aware_shuffle: false  # Optional: shuffle queries to prevent order bias
+
+RTDETRPostProcessor:
+  num_top_queries: 500
+  remap_mscoco_category: False

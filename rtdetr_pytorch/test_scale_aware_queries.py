@@ -36,7 +36,7 @@ def test_scale_aware_query_allocation():
     print("=" * 60)
     
     # Configuration
-    num_queries = 300
+    num_queries = 500
     num_classes = 10
     hidden_dim = 256
     num_levels = 3
