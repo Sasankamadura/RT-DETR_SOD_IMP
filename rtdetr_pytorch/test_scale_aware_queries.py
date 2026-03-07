@@ -8,10 +8,10 @@ import os
 
 # Set path dynamically based on current location
 current_dir = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.join(current_dir, 'src')
-sys.path.insert(0, src_path)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
-print(f"Python path: {src_path}")
+print(f"Python paths: {sys.path[:2]}")
 print(f"Current directory: {current_dir}")
 
 try:
@@ -22,7 +22,7 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    from zoo.rtdetr.rtdetr_decoder import RTDETRTransformer
+    from src.zoo.rtdetr.rtdetr_decoder import RTDETRTransformer
     print("✓ Successfully imported RTDETRTransformer")
 except Exception as e:
     print(f"✗ Failed to import RTDETRTransformer: {e}")
@@ -41,6 +41,7 @@ def test_scale_aware_query_allocation():
     hidden_dim = 256
     num_levels = 3
     query_scale_ratios = [0.4, 0.3, 0.3]  # P3, P4, P5
+    feat_channels = [128, 256, 512]       # ResNet-18 backbone channels
     
     # Test 1: Model initialization with scale-aware selection
     print("\n[Test 1] Initializing model with scale-aware query selection...")
@@ -50,6 +51,7 @@ def test_scale_aware_query_allocation():
             hidden_dim=hidden_dim,
             num_queries=num_queries,
             num_levels=num_levels,
+            feat_channels=feat_channels,
             scale_aware_query_selection=True,
             query_scale_ratios=query_scale_ratios
         )
@@ -124,6 +126,7 @@ def test_scale_aware_query_allocation():
             hidden_dim=hidden_dim,
             num_queries=num_queries,
             num_levels=num_levels,
+            feat_channels=feat_channels,
             scale_aware_query_selection=False
         )
         
