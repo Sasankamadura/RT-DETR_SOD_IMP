@@ -10,7 +10,7 @@ __include__: [
 # "Novel Coord-gnConv" Configuration for SOD
 # -----------------------------------------------------------------
 output_dir: ./output/rtdetr_r18vd_sod_novel
-epochs: 100
+epochs: 64
 num_classes: 10
 remap_mscoco_category: False
 

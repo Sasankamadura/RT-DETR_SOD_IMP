@@ -7,6 +7,7 @@ import torch.nn as nn
 from datetime import datetime
 from pathlib import Path 
 from typing import Dict
+from collections import Counter
 
 from src.misc import dist
 from src.core import BaseConfig
@@ -119,6 +120,14 @@ class BaseSolver(object):
         if getattr(self, 'lr_scheduler', None) and 'lr_scheduler' in state:
             self.lr_scheduler.load_state_dict(state['lr_scheduler'])
             print('Loading lr_scheduler.state_dict')
+
+            # Force override milestones if present in config (to handle schedule changes on resume)
+            if hasattr(self.cfg, 'yaml_cfg') and 'lr_scheduler' in self.cfg.yaml_cfg:
+                scheduler_cfg = self.cfg.yaml_cfg['lr_scheduler']
+                if scheduler_cfg.get('type') == 'MultiStepLR' and 'milestones' in scheduler_cfg:
+                    milestones = scheduler_cfg['milestones']
+                    self.lr_scheduler.milestones = Counter(milestones)
+                    print(f'Overriding milestones to {milestones}')
 
         if getattr(self, 'scaler', None) and 'scaler' in state:
             self.scaler.load_state_dict(state['scaler'])
