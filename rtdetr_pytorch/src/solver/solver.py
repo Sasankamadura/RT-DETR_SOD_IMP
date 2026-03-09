@@ -129,6 +129,20 @@ class BaseSolver(object):
                     self.lr_scheduler.milestones = Counter(milestones)
                     print(f'Overriding milestones to {milestones}')
 
+                    # Recalculate LR based on current epoch and new milestones
+                    gamma = scheduler_cfg.get('gamma', 0.1)
+                    # Count how many milestones the current epoch has passed
+                    count = sum(self.last_epoch >= m for m in milestones)
+                    new_lr_factor = gamma ** count
+                    
+                    # Update optimizer learning rates
+                    for i, param_group in enumerate(self.optimizer.param_groups):
+                        # Use base_lr if available, otherwise use initial_lr from scheduler
+                        base_lr = param_group.get('initial_lr', self.lr_scheduler.base_lrs[i])
+                        param_group['lr'] = base_lr * new_lr_factor
+                    
+                    print(f'Recalculated optimizer LR to {self.optimizer.param_groups[0]["lr"]} (factor: {new_lr_factor})')
+
         if getattr(self, 'scaler', None) and 'scaler' in state:
             self.scaler.load_state_dict(state['scaler'])
             print('Loading scaler.state_dict')
