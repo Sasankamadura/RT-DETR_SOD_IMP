@@ -42,6 +42,7 @@ HybridEncoderNovelCoordGnConv:
   depth_mult: 1.0
   act: 'silu'
   reduction: 4  # Coordinate reduction ratio
+  eval_spatial_size: [640, 640]
 
 RTDETRTransformer:
   feat_channels: [256, 256, 256, 256]
