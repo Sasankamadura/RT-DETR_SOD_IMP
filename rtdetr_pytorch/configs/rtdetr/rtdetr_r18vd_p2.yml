@@ -10,7 +10,7 @@ __include__: [
 # P2 Feature Fusion (Standard HybridEncoder - No GnConv)
 # -----------------------------------------------------------------
 output_dir: ./output/rtdetr_r18vd_p2
-epochs: 64
+epochs: 102
 num_classes: 10
 remap_mscoco_category: False
 
