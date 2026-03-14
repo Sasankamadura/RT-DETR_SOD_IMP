@@ -11,7 +11,7 @@ __include__: [
 # P2 GnConv Hybrid (P2=GnConv, P3-P5=Standard RepVVG)
 # -----------------------------------------------------------------
 output_dir: ./output/rtdetr_r18vd_p2_gnconv_repvgg
-epochs: 98
+epochs: 102
 num_classes: 10
 remap_mscoco_category: False
 
