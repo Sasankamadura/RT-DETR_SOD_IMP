@@ -34,8 +34,7 @@ class CoordGnConv(nn.Module):
     def __init__(self, dim, reduction=4, act='silu'):
         super().__init__()
         self.dim = dim
-        self.hidden_dim = dim // 2
-        
+
         # 1. Input Projection
         self.proj_in = nn.Sequential(
             nn.Conv2d(dim, dim, 1, bias=False),
