@@ -35,11 +35,11 @@ HybridEncoderNovelCoordGnConv:
   use_encoder_idx: [3]
   num_encoder_layers: 1
   nhead: 8
-  dim_feedforward: 1024
+  dim_feedforward: 512
   dropout: 0.
   enc_act: 'gelu'
   expansion: 0.5
-  depth_mult: 1.0
+  depth_mult: 0.67
   act: 'silu'
   reduction: 4  # Coordinate reduction ratio
   eval_spatial_size: [640, 640]

@@ -1,6 +1,6 @@
 '''
 HybridEncoder with "Novel Coord-gnConv" strategy.
-- P2-P5 (Stride 4-32): Uses CoordGnConvFusionBlock (Parallel Gating + SPD).
+- P2-P5 (Stride 4-32): Uses CoordGnConv (Parallel Gating + SPD).
 - Replaces recursive loops with Coordinate-Aware Attention.
 '''
 
@@ -34,21 +34,9 @@ class ConvNormLayer(nn.Module):
         return self.act(self.norm(self.conv(x)))
 
 
-class CoordGnConvFusionBlock(nn.Module):
-    """
-    Fusion Block using Novel CoordGnConv.
-    """
-    def __init__(self, dim, reduction=4):
-        super().__init__()
-        self.block = CoordGnConv(dim, reduction=reduction)
-        
-    def forward(self, x):
-        return self.block(x)
-
-
 class CSPCoordGnLayer(nn.Module):
     """
-    CSP Layer that uses CoordGnConvFusionBlocks.
+    CSP Layer that uses CoordGnConv bottlenecks.
     """
     def __init__(self,
                  in_channels,
@@ -64,7 +52,7 @@ class CSPCoordGnLayer(nn.Module):
         self.conv2 = ConvNormLayer(in_channels, hidden_channels, 1, 1, bias=bias, act=act)
         
         self.bottlenecks = nn.Sequential(*[
-            CoordGnConvFusionBlock(hidden_channels, reduction=reduction) for _ in range(num_blocks)
+            CoordGnConv(hidden_channels, reduction=reduction, act=act) for _ in range(num_blocks)
         ])
         
         if hidden_channels != out_channels:
