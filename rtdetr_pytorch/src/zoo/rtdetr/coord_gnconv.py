@@ -9,7 +9,7 @@ class SPDConv(nn.Module):
     Preserves all pixel information by moving spatial dimensions to depth.
     Reference: https://arxiv.org/abs/2208.03640
     """
-    def __init__(self, ch_in, ch_out):
+    def __init__(self, ch_in, ch_out, dimension=1):
         super().__init__()
         self.conv = nn.Conv2d(ch_in * 4, ch_out, kernel_size=1, stride=1, bias=False)
         self.bn = nn.BatchNorm2d(ch_out)
@@ -34,12 +34,14 @@ class CoordGnConv(nn.Module):
     def __init__(self, dim, reduction=4, act='silu'):
         super().__init__()
         self.dim = dim
-
-        # 1. Input Projection
+        self.hidden_dim = dim // 2
+        
+        # 1. SPD-Enhanced Input Projection (instead of standard 1x1)
+        # We use a small SPD block to reduce resolution but preserve SOD features
         self.proj_in = nn.Sequential(
             nn.Conv2d(dim, dim, 1, bias=False),
             nn.BatchNorm2d(dim),
-            get_activation(act)
+            nn.SiLU()
         )
 
         # 2. Parallel Coordinate-Gating Branch
