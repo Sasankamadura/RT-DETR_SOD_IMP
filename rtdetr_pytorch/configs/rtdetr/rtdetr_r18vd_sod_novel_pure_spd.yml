@@ -1,0 +1,12 @@
+__include__: [
+  'rtdetr_r18vd_sod_novel.yml'
+]
+
+# Override to use SPD but standard CSP blocks (Pure SPD)
+HybridEncoderNovelCoordGnConv:
+  use_spd: True
+  use_coord_gating: False # Reverts to standard CSPRepLayer
+  expansion: 0.5  
+  depth_mult: 1.0
+
+output_dir: ./output/rtdetr_r18vd_sod_novel_pure_spd

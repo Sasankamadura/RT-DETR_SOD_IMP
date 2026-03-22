@@ -1,0 +1,13 @@
+__include__: [
+  'rtdetr_r18vd_sod_novel.yml'
+]
+
+# Override to disable SPD but keep Coord-GnConv gating (Pure Gating)
+HybridEncoderNovelCoordGnConv:
+  use_spd: False
+  use_coord_gating: True
+  expansion: 0.5  # Keeping slim to compare against Model 6
+  depth_mult: 1.0
+  reduction: 4
+
+output_dir: ./output/rtdetr_r18vd_sod_novel_no_spd

@@ -11,6 +11,7 @@ import torch.nn.functional as F
 
 from .utils import get_activation
 from .coord_gnconv import CoordGnConv, SPDConv
+from .hybrid_encoder import CSPRepLayer
 
 from src.core import register
 
@@ -163,7 +164,9 @@ class HybridEncoderNovelCoordGnConv(nn.Module):
                  depth_mult=1.0,
                  act='silu',
                  eval_spatial_size=None,
-                 reduction=4):
+                 reduction=4,
+                 use_spd=True,
+                 use_coord_gating=True):
         super().__init__()
         self.in_channels = in_channels
         self.feat_strides = feat_strides
@@ -172,6 +175,8 @@ class HybridEncoderNovelCoordGnConv(nn.Module):
         self.num_encoder_layers = num_encoder_layers
         self.pe_temperature = pe_temperature
         self.eval_spatial_size = eval_spatial_size
+        self.use_spd = use_spd
+        self.use_coord_gating = use_coord_gating
 
         self.out_channels = [hidden_dim for _ in range(len(in_channels))]
         self.out_strides = feat_strides
@@ -203,20 +208,36 @@ class HybridEncoderNovelCoordGnConv(nn.Module):
         self.fpn_blocks = nn.ModuleList()
         for _ in range(len(in_channels) - 1, 0, -1):
             self.lateral_convs.append(ConvNormLayer(hidden_dim, hidden_dim, 1, 1, act=act))
-            self.fpn_blocks.append(
-                CSPCoordGnLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion, reduction=reduction)
-            )
+            if self.use_coord_gating:
+                self.fpn_blocks.append(
+                    CSPCoordGnLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion, reduction=reduction)
+                )
+            else:
+                self.fpn_blocks.append(
+                    CSPRepLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion)
+                )
 
         # bottom-up pan - USING CoordGnConv + SPD Downsampling
         self.downsample_convs = nn.ModuleList()
         self.pan_blocks = nn.ModuleList()
         for _ in range(len(in_channels) - 1):
-            self.downsample_convs.append(
-                SPDConv(hidden_dim, hidden_dim)
-            )
-            self.pan_blocks.append(
-                CSPCoordGnLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion, reduction=reduction)
-            )
+            if self.use_spd:
+                self.downsample_convs.append(
+                    SPDConv(hidden_dim, hidden_dim)
+                )
+            else:
+                self.downsample_convs.append(
+                    ConvNormLayer(hidden_dim, hidden_dim, 3, 2, act=act)
+                )
+            
+            if self.use_coord_gating:
+                self.pan_blocks.append(
+                    CSPCoordGnLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion, reduction=reduction)
+                )
+            else:
+                self.pan_blocks.append(
+                    CSPRepLayer(hidden_dim * 2, hidden_dim, round(3 * depth_mult), act=act, expansion=expansion)
+                )
 
         self._reset_parameters()
 

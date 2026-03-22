@@ -7,7 +7,7 @@ class SPDConv(nn.Module):
     """
     Space-to-Depth Convolution. 
     Preserves all pixel information by moving spatial dimensions to depth.
-    Reference: https://arxiv.org/abs/2208.03640
+    Reference: https://arxiv.org/abs/2208.03641
     """
     def __init__(self, ch_in, ch_out, dimension=1):
         super().__init__()
