@@ -20,8 +20,11 @@ def test_pure_spd():
     print("TESTING: Exp 4: Pure SPD (SPD + Standard Neck)")
     print("="*60)
 
-    # Instantiate model with SPD=True, Gating=False
+    # Instantiate model with SPD=True, Gating=False, and 4-level SOD channels
     model = HybridEncoderNovelCoordGnConv(
+        in_channels=[64, 128, 256, 512],
+        feat_strides=[4, 8, 16, 32],
+        use_encoder_idx=[3],
         use_spd=True, 
         use_coord_gating=False,
         hidden_dim=256,

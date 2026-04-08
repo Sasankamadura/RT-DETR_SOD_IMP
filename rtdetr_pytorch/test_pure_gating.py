@@ -20,8 +20,11 @@ def test_pure_gating():
     print("TESTING: Exp 5: Pure Gating (Coord-GnConv + Standard Downsampling)")
     print("="*60)
 
-    # Instantiate model with SPD=False, Gating=True
+    # Instantiate model with SPD=False, Gating=True, and 4-level SOD channels
     model = HybridEncoderNovelCoordGnConv(
+        in_channels=[64, 128, 256, 512],
+        feat_strides=[4, 8, 16, 32],
+        use_encoder_idx=[3],
         use_spd=False, 
         use_coord_gating=True,
         hidden_dim=256,
